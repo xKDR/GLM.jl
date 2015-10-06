@@ -61,7 +61,7 @@ function updatemu!{T<:FPVector}(r::GlmResp{T}, linPr::T)
 
         var[i] = glmvar(dist, link, μ, η)
         ys = y[i]
-        wrkresid[i] = (ys - μ)/dμdη
+        wrkresid[i] = ifelse(dμdη == 0, zero(dμdη), (ys - μ)/dμdη)
         devresidv[i] = devresid(dist, ys, μ, wts[i])
     end
     r
@@ -82,12 +82,12 @@ function wrkwt!(r::GlmResp)
     var = r.var
     if length(r.wts) == 0
         @simd for i = 1:length(r.var)
-            @inbounds wrkwts[i] = abs2(mueta[i])/var[i]
+            @inbounds wrkwts[i] = ifelse(var[i] == 0, zero(var[i]), abs2(mueta[i])/var[i])
         end
     else
         wts = r.wts
         @simd for i = 1:length(r.var)
-            @inbounds wrkwts[i] = wts[i] * abs2(mueta[i])/var[i]
+            @inbounds wrkwts[i] = ifelse(var[i] == 0, zero(var[i]), wts[i] * abs2(mueta[i])/var[i])
         end
     end
     wrkwts
