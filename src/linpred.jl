@@ -88,7 +88,7 @@ A `LinPred` type with a dense Cholesky factorization of `X'X`
 - `scratchm2`: scratch Matrix{T} os the same size as `X'X`
 """
 mutable struct DensePredChol{T<:BlasReal,C} <: DensePred
-    X::Matrix{T}                   # model matrix
+    X::StridedMatrix{T}                   # model matrix
     beta0::Vector{T}               # base vector for coefficients
     delbeta::Vector{T}             # coefficient increment
     scratchbeta::Vector{T}
@@ -96,23 +96,22 @@ mutable struct DensePredChol{T<:BlasReal,C} <: DensePred
     scratchm1::Matrix{T}
     scratchm2::Matrix{T}
 end
-function DensePredChol(X::StridedMatrix, pivot::Bool)
-    F = Hermitian(float(X'X))
-    T = eltype(F)
+function DensePredChol(X::StridedMatrix{T}, pivot::Bool) where {T<:BlasReal}
+    F = Hermitian(X'X)
     F = pivot ? cholfact!(F, Val{true}, tol = -one(T)) : cholfact!(F)
-    DensePredChol(AbstractMatrix{T}(X),
+    DensePredChol(X,
         zeros(T, size(X, 2)),
         zeros(T, size(X, 2)),
         zeros(T, size(X, 2)),
         F,
-        similar(X, T),
+        similar(X),
         similar(cholfactors(F)))
 end
 
-cholpred(X::StridedMatrix, pivot::Bool=false) = DensePredChol(X, pivot)
+cholpred(X::StridedMatrix, pivot::Bool=false) = DensePredChol(float(X), pivot)
 
 cholfactors(c::Union{Cholesky,CholeskyPivoted}) = c.factors
-Base.LinAlg.cholfact!(p::DensePredChol{T}) where {T<:FP} = p.chol
+Base.LinAlg.cholfact!(p::DensePredChol{<:FP}) = p.chol
 
 if VERSION < v"0.7.0-DEV.393"
     Base.LinAlg.cholfact(p::DensePredQR{T}) where {T<:FP} = Cholesky{T,typeof(p.X)}(copy(p.qr[:R]), 'U')

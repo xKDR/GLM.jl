@@ -488,3 +488,13 @@ end
     mod2 = lm(Xc2, Yc)
     @test GLM.issubmodel(mod1, mod2)
 end
+
+@testset "Issue 213" begin
+    rng = MersenneTwister(1234321)
+    xs = randn(rng, (46, 3))
+    ys = randn(46)
+    m = GLM.lm(xs, ys)
+    @test deviance(m) ≈ 58.963325930099245
+    msub = GLM.lm(@view(xs[1:end, 1:end]), ys)
+    @test coef(m) ≈ coef(msub)
+end
