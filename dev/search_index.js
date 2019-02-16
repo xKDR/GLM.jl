@@ -237,7 +237,7 @@ var documenterSearchIndex = {"docs": [
     "page": "API",
     "title": "GLM.dispersion",
     "category": "function",
-    "text": "dispersion(m::AbstractGLM, sqr::Bool=false)\n\nReturn the estimated dispersion (or scale) parameter for a model\'s distribution, generally written σ² for linear models and ϕ for generalized linear models. It is, by definition, equal to 1 for the Bernoulli, Binomial, and Poisson families.\n\nIf sqr is true, the squared dispersion parameter is returned.\n\n\n\n\n\n"
+    "text": "dispersion(m::AbstractGLM, sqr::Bool=false)\n\nReturn the estimated dispersion (or scale) parameter for a model\'s distribution, generally written σ for linear models and ϕ for generalized linear models. It is, by definition, equal to 1 for the Bernoulli, Binomial, and Poisson families.\n\nIf sqr is true, the squared dispersion parameter is returned.\n\n\n\n\n\n"
 },
 
 {
