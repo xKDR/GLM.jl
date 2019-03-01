@@ -201,11 +201,35 @@ var documenterSearchIndex = {"docs": [
 },
 
 {
+    "location": "api/#GLM.glm",
+    "page": "API",
+    "title": "GLM.glm",
+    "category": "function",
+    "text": "glm(F, D, args...; kwargs...)\n\nFit a generalized linear model to data. Alias for fit(GeneralizedLinearModel, ...). See fit for documentation.\n\n\n\n\n\n"
+},
+
+{
+    "location": "api/#StatsBase.fit",
+    "page": "API",
+    "title": "StatsBase.fit",
+    "category": "function",
+    "text": "fit(GeneralizedLinearModel, X, y, d, [l = canonicallink(d)]; <keyword arguments>)\n\nFit a generalized linear model to data. X and y can either be a matrix and a vector, respectively, or a formula and a data frame. d must be a UnivariateDistribution, and l must be a Link, if supplied.\n\nKeyword Arguments\n\nverbose::Bool=false: Display convergence information for each iteration\nmaxIter::Integer=30: Maximum number of iterations allowed to achieve convergence\nconvTol::Real=1e-6: Convergence is achieved when the relative change in\n\ndeviance is less than this\n\nminStepFac::Real=0.001: Minimum line step fraction. Must be between 0 and 1.\nstart::AbstractVector=nothing: Starting values for beta. Should have the\n\nsame length as the number of columns in the model matrix.\n\n\n\n\n\n"
+},
+
+{
+    "location": "api/#GLM.lm",
+    "page": "API",
+    "title": "GLM.lm",
+    "category": "function",
+    "text": "lm(X, y, allowrankdeficient::Bool=false)\n\nAn alias for fit(LinearModel, X, y, allowrankdeficient)\n\nThe arguments X and y can be a Matrix and a Vector or a Formula and a DataFrame.\n\n\n\n\n\n"
+},
+
+{
     "location": "api/#Constructors-for-models-1",
     "page": "API",
     "title": "Constructors for models",
     "category": "section",
-    "text": "The most general approach to fitting a model is with the fit function, as injulia> using Random;\n\njulia> fit(LinearModel, hcat(ones(10), 1:10), randn(MersenneTwister(12321), 10))\nLinearModel{LmResp{Array{Float64,1}},DensePredChol{Float64,LinearAlgebra.Cholesky{Float64,Array{Float64,2}}}}:\n\nCoefficients:\n      Estimate Std.Error  t value Pr(>|t|)\nx1    0.717436  0.775175 0.925515   0.3818\nx2   -0.152062  0.124931 -1.21717   0.2582This model can also be fit asjulia> using Random;\n\njulia> lm(hcat(ones(10), 1:10), randn(MersenneTwister(12321), 10))\nLinearModel{LmResp{Array{Float64,1}},DensePredChol{Float64,LinearAlgebra.Cholesky{Float64,Array{Float64,2}}}}:\n\nCoefficients:\n      Estimate Std.Error  t value Pr(>|t|)\nx1    0.717436  0.775175 0.925515   0.3818\nx2   -0.152062  0.124931 -1.21717   0.2582"
+    "text": "The most general approach to fitting a model is with the fit function, as injulia> using Random;\n\njulia> fit(LinearModel, hcat(ones(10), 1:10), randn(MersenneTwister(12321), 10))\nLinearModel{LmResp{Array{Float64,1}},DensePredChol{Float64,LinearAlgebra.Cholesky{Float64,Array{Float64,2}}}}:\n\nCoefficients:\n      Estimate Std.Error  t value Pr(>|t|)\nx1    0.717436  0.775175 0.925515   0.3818\nx2   -0.152062  0.124931 -1.21717   0.2582This model can also be fit asjulia> using Random;\n\njulia> lm(hcat(ones(10), 1:10), randn(MersenneTwister(12321), 10))\nLinearModel{LmResp{Array{Float64,1}},DensePredChol{Float64,LinearAlgebra.Cholesky{Float64,Array{Float64,2}}}}:\n\nCoefficients:\n      Estimate Std.Error  t value Pr(>|t|)\nx1    0.717436  0.775175 0.925515   0.3818\nx2   -0.152062  0.124931 -1.21717   0.2582glm\nfit\nlm"
 },
 
 {
@@ -273,14 +297,6 @@ var documenterSearchIndex = {"docs": [
 },
 
 {
-    "location": "api/#GLM.lm",
-    "page": "API",
-    "title": "GLM.lm",
-    "category": "function",
-    "text": "lm(X, y, allowrankdeficient::Bool=false)\n\nAn alias for fit(LinearModel, X, y, allowrankdeficient)\n\nThe arguments X and y can be a Matrix and a Vector or a Formula and a DataFrame.\n\n\n\n\n\n"
-},
-
-{
     "location": "api/#StatsBase.nobs",
     "page": "API",
     "title": "StatsBase.nobs",
@@ -333,7 +349,7 @@ var documenterSearchIndex = {"docs": [
     "page": "API",
     "title": "Model methods",
     "category": "section",
-    "text": "GLM.cancancel\ndelbeta!\nStatsBase.deviance\nGLM.dispersion\nGLM.installbeta!\nGLM.issubmodel\nlinpred!\nlinpred\nlm\nStatsBase.nobs\nStatsBase.nulldeviance\nStatsBase.predict\nupdateμ!\nwrkresp\nGLM.wrkresp!"
+    "text": "GLM.cancancel\ndelbeta!\nStatsBase.deviance\nGLM.dispersion\nGLM.installbeta!\nGLM.issubmodel\nlinpred!\nlinpred\nStatsBase.nobs\nStatsBase.nulldeviance\nStatsBase.predict\nupdateμ!\nwrkresp\nGLM.wrkresp!"
 },
 
 {
