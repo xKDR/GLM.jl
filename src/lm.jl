@@ -118,12 +118,15 @@ A combination of a [`LmResp`](@ref) and a [`LinPred`](@ref)
 - `rr`: a `LmResp` object
 - `pp`: a `LinPred` object
 """
-struct LinearModel{L<:LmResp,T<:LinPred} <: LinPredModel
+struct LinearModel{L<:LmResp,T<:LinPred,F<:Union{FormulaTerm,Nothing}} <: LinPredModel
     rr::L
     pp::T
+    f::F
 end
 
 LinearAlgebra.cholesky(x::LinearModel) = cholesky(x.pp)
+
+formula(obj::LinearModel) = obj.f
 
 function StatsBase.fit!(obj::LinearModel)
     installbeta!(delbeta!(obj.pp, obj.rr.y))
@@ -133,7 +136,14 @@ end
 
 function fit(::Type{LinearModel}, X::AbstractMatrix, y::AbstractVector,
              allowrankdeficient::Bool=false)
-    fit!(LinearModel(LmResp(y), cholpred(X, allowrankdeficient)))
+    fit!(LinearModel(LmResp(y), cholpred(X, allowrankdeficient), nothing))
+end
+
+function fit(::Type{LinearModel}, f::FormulaTerm, data,
+             allowrankdeficient::Bool=false;
+             contrasts::AbstractDict{Symbol}=Dict{Symbol,Any}())
+    f, (y, X) = StatsModels.modelmatrix(f, data, contrasts, model=LinearModel)
+    fit!(LinearModel(LmResp(y), cholpred(X, allowrankdeficient), f))
 end
 
 """
@@ -186,9 +196,10 @@ function coeftable(mm::LinearModel; level::Real=0.95)
     p = ccdf.(Ref(FDist(1, dof_residual(mm))), abs2.(tt))
     ci = se*quantile(TDist(dof_residual(mm)), (1-level)/2)
     levstr = isinteger(level*100) ? string(Integer(level*100)) : string(level*100)
+    cn = mm.f === nothing ? ["x$i" for i = 1:size(mm.pp.X, 2)] : coefnames(mm)
     CoefTable(hcat(cc,se,tt,p,cc+ci,cc-ci),
               ["Estimate","Std. Error","t value","Pr(>|t|)","Lower $levstr%","Upper $levstr%"],
-              ["x$i" for i = 1:size(mm.pp.X, 2)], 4)
+              cn, 4)
 end
 
 """
@@ -203,7 +214,7 @@ Valid values of `interval` are `:confidence` delimiting the  uncertainty of the
 predicted relationship, and `:prediction` delimiting estimated bounds for new data points.
 """
 function predict(mm::LinearModel, newx::AbstractMatrix;
-                 interval::Union{Symbol,Nothing}=nothing, level::Real = 0.95)
+                 interval::Union{Symbol,Nothing}=nothing, level::Real=0.95)
     retmean = newx * coef(mm)
     if interval === :confint
         Base.depwarn("interval=:confint is deprecated in favor of interval=:confidence")
@@ -224,6 +235,35 @@ function predict(mm::LinearModel, newx::AbstractMatrix;
     end
     retinterval = quantile(TDist(dof_residual(mm)), (1. - level)/2) * sqrt.(retvariance)
     (prediction = retmean, lower = retmean .+ retinterval, upper = retmean .- retinterval)
+end
+
+function StatsModels.predict!(y::AbstractVector, mm::LinearModel, newx::AbstractMatrix)
+    y .= newx * coef(mm)
+    y
+end
+
+function StatsModels.predict!(res::NamedTuple{<:Any, NTuple{3, AbstractVector}},
+                              mm::LinearModel, newx::AbstractMatrix;
+                              interval::Symbol, level::Real=0.95)
+    res.prediction .= newx * coef(mm)
+    if interval === :confint
+        Base.depwarn("interval=:confint is deprecated in favor of interval=:confidence")
+        interval = :confidence
+    end
+    length(mm.rr.wts) == 0 || error("prediction with confidence intervals not yet implemented for weighted regression")
+    R = cholesky!(mm.pp).U #get the R matrix from the QR factorization
+    residvar = (ones(size(newx,2),1) * deviance(mm)/dof_residual(mm))
+    if interval == :confidence
+        retvariance = (newx/R).^2 * residvar
+    elseif interval == :prediction
+        retvariance = (newx/R).^2 * residvar .+ deviance(mm)/dof_residual(mm)
+    else
+        error("only :confidence and :prediction intervals are defined")
+    end
+    retinterval = quantile(TDist(dof_residual(mm)), (1. - level)/2) * sqrt.(retvariance)
+    res.lower .= res.prediction .+ retinterval
+    res.upper .= res.prediction -+ retinterval
+    res
 end
 
 function confint(obj::LinearModel; level::Real=0.95)

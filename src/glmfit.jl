@@ -215,11 +215,14 @@ end
 
 abstract type AbstractGLM <: LinPredModel end
 
-mutable struct GeneralizedLinearModel{G<:GlmResp,L<:LinPred} <: AbstractGLM
+mutable struct GeneralizedLinearModel{G<:GlmResp,L<:LinPred,F<:Union{FormulaTerm,Nothing}} <: AbstractGLM
     rr::G
     pp::L
+    f::F
     fit::Bool
 end
+
+formula(obj::GeneralizedLinearModel) = obj.f
 
 function coeftable(mm::AbstractGLM; level::Real=0.95)
     cc = coef(mm)
@@ -228,9 +231,10 @@ function coeftable(mm::AbstractGLM; level::Real=0.95)
     p = 2 * ccdf.(Ref(Normal()), abs.(zz))
     ci = se*quantile(Normal(), (1-level)/2)
     levstr = isinteger(level*100) ? string(Integer(level*100)) : string(level*100)
+    cn = mm.f === nothing ? ["x$i" for i = 1:size(mm.pp.X, 2)] : coefnames(mm)
     CoefTable(hcat(cc,se,zz,p,cc+ci,cc-ci),
               ["Estimate","Std. Error","z value","Pr(>|z|)","Lower $levstr%","Upper $levstr%"],
-              ["x$i" for i = 1:size(mm.pp.X, 2)], 4)
+              cn, 4)
 end
 
 function confint(obj::AbstractGLM; level::Real=0.95)
@@ -454,7 +458,7 @@ function fit(::Type{M},
     end
 
     rr = GlmResp(y, d, l, offset, wts)
-    res = M(rr, cholpred(X), false)
+    res = M(rr, cholpred(X), nothing, false)
     return dofit ? fit!(res; fitargs...) : res
 end
 
@@ -464,6 +468,33 @@ fit(::Type{M},
     d::UnivariateDistribution,
     l::Link=canonicallink(d); kwargs...) where {M<:AbstractGLM} =
         fit(M, float(X), float(y), d, l; kwargs...)
+
+function fit(::Type{M},
+             f::FormulaTerm,
+             data,
+             d::UnivariateDistribution,
+             l::Link=canonicallink(d);
+             # TODO: support passing wts and offset as symbols
+             offset::Union{AbstractVector, Nothing} = nothing,
+             wts::Union{AbstractVector, Nothing} = nothing,
+             dofit::Bool = true,
+             contrasts::AbstractDict{Symbol}=Dict{Symbol,Any}(),
+             fitargs...) where {M<:AbstractGLM}
+    f, (y, X) = StatsModels.modelmatrix(f, data, contrasts, model=M)
+
+    # Check that X and y have the same number of observations
+    if size(X, 1) != size(y, 1)
+        throw(DimensionMismatch("number of rows in X and y must match"))
+    end
+
+    # TODO: allocate right type upfront
+    yf = float(y)
+    off = offset === nothing ? similar(yf, 0) : offset
+    wts = wts === nothing ? similar(yf, 0) : wts
+    rr = GlmResp(yf, d, l, off, wts)
+    res = M(rr, cholpred(X), f, false)
+    return dofit ? fit!(res; fitargs...) : res
+end
 
 """
     glm(F, D, args...; kwargs...)
@@ -507,8 +538,13 @@ end
 Form the predicted response of model `mm` from covariate values `newX` and, optionally,
 an offset.
 """
-function predict(mm::AbstractGLM, newX::AbstractMatrix;
-                 offset::FPVector=eltype(newX)[])
+StatsBase.predict(mm::AbstractGLM, newX::AbstractMatrix;
+                  offset::FPVector=eltype(newX)[]) =
+    predict!(similar(response(mm), size(newX, 1)),
+                         mm, newX, offset=offset)
+
+function StatsModels.predict!(y::AbstractVector, mm::AbstractGLM, newX::AbstractMatrix;
+                              offset::FPVector=eltype(newX)[])
     eta = newX * coef(mm)
     if !isempty(mm.rr.offset)
         length(offset) == size(newX, 1) ||
@@ -517,7 +553,7 @@ function predict(mm::AbstractGLM, newX::AbstractMatrix;
     else
         length(offset) > 0 && throw(ArgumentError("fit without offset, so value of `offset` kw arg does not make sense"))
     end
-    mu = [linkinv(Link(mm), x) for x in eta]
+    y .= linkinv.(Ref(Link(mm)), eta)
 end
 
 # A helper function to choose default values for eta
