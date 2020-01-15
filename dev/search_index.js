@@ -165,7 +165,7 @@ var documenterSearchIndex = {"docs": [
     "page": "API",
     "title": "GLM.lm",
     "category": "function",
-    "text": "lm(X, y, allowrankdeficient::Bool=false)\n\nAn alias for fit(LinearModel, X, y, allowrankdeficient)\n\nThe arguments X and y can be a Matrix and a Vector or a Formula and a DataFrame.\n\n\n\n\n\n"
+    "text": "lm(X, y, allowrankdeficient::Bool=false; wts=similar(y, 0))\n\nAn alias for fit(LinearModel, X, y, allowrankdeficient)\n\nThe arguments X and y can be a Matrix and a Vector or a Formula and a DataFrame.\n\nThe keyword argument wts can be a Vector specifying frequency weights for observations.\n\n\n\n\n\n"
 },
 
 {
