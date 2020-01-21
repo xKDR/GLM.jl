@@ -61,7 +61,7 @@ var documenterSearchIndex = {"docs": [
     "page": "Manual",
     "title": "Methods applied to fitted models",
     "category": "section",
-    "text": "Many of the methods provided by this package have names similar to those in R.coef: extract the estimates of the coefficients in the model\ndeviance: measure of the model fit, weighted residual sum of squares for lm\'s\ndof_residual: degrees of freedom for residuals, when meaningful\nglm: fit a generalized linear model (an alias for fit(GeneralizedLinearModel, ...))\nlm: fit a linear model (an alias for fit(LinearModel, ...))\nstderror: standard errors of the coefficients\nvcov: estimated variance-covariance matrix of the coefficient estimates\npredict : obtain predicted values of the dependent variable from the fitted modelNote that the canonical link for negative binomial regression is NegativeBinomialLink, but in practice one typically uses LogLink."
+    "text": "Many of the methods provided by this package have names similar to those in R.coef: extract the estimates of the coefficients in the model\ndeviance: measure of the model fit, weighted residual sum of squares for lm\'s\ndof_residual: degrees of freedom for residuals, when meaningful\nglm: fit a generalized linear model (an alias for fit(GeneralizedLinearModel, ...))\nlm: fit a linear model (an alias for fit(LinearModel, ...))\nr2: R² of a linear model or pseudo-R² of a generalized linear model\nstderror: standard errors of the coefficients\nvcov: estimated variance-covariance matrix of the coefficient estimates\npredict : obtain predicted values of the dependent variable from the fitted modelNote that the canonical link for negative binomial regression is NegativeBinomialLink, but in practice one typically uses LogLink."
 },
 
 {
@@ -169,11 +169,19 @@ var documenterSearchIndex = {"docs": [
 },
 
 {
+    "location": "api/#GLM.negbin",
+    "page": "API",
+    "title": "GLM.negbin",
+    "category": "function",
+    "text": "negbin(formula,\n       data,\n       link;\n       initialθ::Real=Inf,\n       maxiter::Integer=30,\n       atol::Real=1e-6,\n       rtol::Real=1.e-6,\n       verbose::Bool=false,\n       kwargs...)\n\nFit a negative binomial generalized linear model to data, while simultaneously estimating the shape parameter θ. Extra arguments and keyword arguments will be passed to glm.\n\nKeyword Arguments\n\ninitialθ::Real=Inf: Starting value for shape parameter θ. If it is Inf then the initial value will be estimated by fitting a Poisson distribution.\nmaxiter::Integer=30: See maxiter for glm\natol::Real=1.0e-6: See atol for glm\nrtol::Real=1.0e-6: See rtol for glm\nverbose::Bool=false: See verbose for glm\n\n\n\n\n\n"
+},
+
+{
     "location": "api/#Constructors-for-models-1",
     "page": "API",
     "title": "Constructors for models",
     "category": "section",
-    "text": "The most general approach to fitting a model is with the fit function, as injulia> using Random;\n\njulia> fit(LinearModel, hcat(ones(10), 1:10), randn(MersenneTwister(12321), 10))\nLinearModel{LmResp{Array{Float64,1}},DensePredChol{Float64,LinearAlgebra.Cholesky{Float64,Array{Float64,2}}}}:\n\nCoefficients:\n      Estimate Std.Error  t value Pr(>|t|)\nx1    0.717436  0.775175 0.925515   0.3818\nx2   -0.152062  0.124931 -1.21717   0.2582This model can also be fit asjulia> using Random;\n\njulia> lm(hcat(ones(10), 1:10), randn(MersenneTwister(12321), 10))\nLinearModel{LmResp{Array{Float64,1}},DensePredChol{Float64,LinearAlgebra.Cholesky{Float64,Array{Float64,2}}}}:\n\nCoefficients:\n      Estimate Std.Error  t value Pr(>|t|)\nx1    0.717436  0.775175 0.925515   0.3818\nx2   -0.152062  0.124931 -1.21717   0.2582glm\nfit\nlm"
+    "text": "The most general approach to fitting a model is with the fit function, as injulia> using Random;\n\njulia> fit(LinearModel, hcat(ones(10), 1:10), randn(MersenneTwister(12321), 10))\nLinearModel{LmResp{Array{Float64,1}},DensePredChol{Float64,LinearAlgebra.Cholesky{Float64,Array{Float64,2}}}}:\n\nCoefficients:\n      Estimate Std.Error  t value Pr(>|t|)\nx1    0.717436  0.775175 0.925515   0.3818\nx2   -0.152062  0.124931 -1.21717   0.2582This model can also be fit asjulia> using Random;\n\njulia> lm(hcat(ones(10), 1:10), randn(MersenneTwister(12321), 10))\nLinearModel{LmResp{Array{Float64,1}},DensePredChol{Float64,LinearAlgebra.Cholesky{Float64,Array{Float64,2}}}}:\n\nCoefficients:\n      Estimate Std.Error  t value Pr(>|t|)\nx1    0.717436  0.775175 0.925515   0.3818\nx2   -0.152062  0.124931 -1.21717   0.2582glm\nfit\nlm\nnegbin"
 },
 
 {
