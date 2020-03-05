@@ -57,6 +57,14 @@ var documenterSearchIndex = {"docs": [
 },
 
 {
+    "location": "manual/#Categorical-variables-1",
+    "page": "Manual",
+    "title": "Categorical variables",
+    "category": "section",
+    "text": "Categorical variables will be dummy coded by default if they are non-numeric or if they are CategoricalVectors within a Tables.jl table (DataFrame, JuliaDB table, named tuple of vectors, etc). Alternatively, you can pass an explicit  contrasts argument if you would like a different contrast coding system or if you are not using DataFrames.The response (dependent) variable may not be categorical.Using a CategoricalVector constructed with categorical or categorical!:julia> using DataFrames, GLM, Random\n\njulia> Random.seed!(1); # Ensure example can be reproduced\n\njulia> data = DataFrame(y = rand(100), x = categorical(repeat([1, 2, 3, 4], 25)));\n\njulia> lm(@formula(y ~ x), data)\nStatsModels.TableRegressionModel{LinearModel{GLM.LmResp{Array{Float64,1}},GLM.DensePredChol{Float64,LinearAlgebra.Cholesky{Float64,Array{Float64,2}}}},Array{Float64,2}}\n\ny ~ 1 + x\n\nCoefficients:\n─────────────────────────────────────────────────────────────────────────────\n              Estimate  Std. Error   t value  Pr(>|t|)   Lower 95%  Upper 95%\n─────────────────────────────────────────────────────────────────────────────\n(Intercept)  0.41335     0.0548456  7.53662     <1e-10   0.304483    0.522218\nx: 2         0.172338    0.0775634  2.2219      0.0286   0.0183756   0.3263  \nx: 3         0.0422104   0.0775634  0.544205    0.5876  -0.111752    0.196172\nx: 4         0.0793591   0.0775634  1.02315     0.3088  -0.074603    0.233321\n─────────────────────────────────────────────────────────────────────────────Using contrasts:julia> data = DataFrame(y = rand(100), x = repeat([1, 2, 3, 4], 25));\n\njulia> lm(@formula(y ~ x), data, contrasts = Dict(:x => DummyCoding()))\nStatsModels.TableRegressionModel{LinearModel{GLM.LmResp{Array{Float64,1}},GLM.DensePredChol{Float64,LinearAlgebra.Cholesky{Float64,Array{Float64,2}}}},Array{Float64,2}}\n\ny ~ 1 + x\n\nCoefficients:\n────────────────────────────────────────────────────────────────────────────────\n               Estimate  Std. Error     t value  Pr(>|t|)   Lower 95%  Upper 95%\n────────────────────────────────────────────────────────────────────────────────\n(Intercept)   0.464446    0.0582412   7.97453      <1e-11   0.348838    0.580054\nx: 2         -0.0057872   0.0823655  -0.0702624    0.9441  -0.169281    0.157707\nx: 3          0.0923976   0.0823655   1.1218       0.2647  -0.0710966   0.255892\nx: 4          0.115145    0.0823655   1.39797      0.1653  -0.0483494   0.278639\n────────────────────────────────────────────────────────────────────────────────"
+},
+
+{
     "location": "manual/#Methods-applied-to-fitted-models-1",
     "page": "Manual",
     "title": "Methods applied to fitted models",
@@ -93,7 +101,7 @@ var documenterSearchIndex = {"docs": [
     "page": "Examples",
     "title": "Linear regression",
     "category": "section",
-    "text": "julia> using DataFrames, GLM\n\njulia> data = DataFrame(X=[1,2,3], Y=[2,4,7])\n3×2 DataFrames.DataFrame\n│ Row │ X     │ Y     │\n│     │ Int64 │ Int64 │\n├─────┼───────┼───────┤\n│ 1   │ 1     │ 2     │\n│ 2   │ 2     │ 4     │\n│ 3   │ 3     │ 7     │\n\njulia> ols = lm(@formula(Y ~ X), data)\nStatsModels.DataFrameRegressionModel{LinearModel{LmResp{Array{Float64,1}},DensePredChol{Float64,LinearAlgebra.Cholesky{Float64,Array{Float64,2}}}},Array{Float64,2}}\n\nFormula: Y ~ 1 + X\n\nCoefficients:\n              Estimate Std.Error  t value Pr(>|t|)\n(Intercept)  -0.666667   0.62361 -1.06904   0.4788\nX                  2.5  0.288675  8.66025   0.0732\n\njulia> round.(stderror(ols), digits=5)\n2-element Array{Float64,1}:\n 0.62361\n 0.28868\n\njulia> round.(predict(ols), digits=5)\n3-element Array{Float64,1}:\n 1.83333\n 4.33333\n 6.83333."
+    "text": "julia> using DataFrames, GLM\n\njulia> data = DataFrame(X=[1,2,3], Y=[2,4,7])\n3×2 DataFrames.DataFrame\n│ Row │ X     │ Y     │\n│     │ Int64 │ Int64 │\n├─────┼───────┼───────┤\n│ 1   │ 1     │ 2     │\n│ 2   │ 2     │ 4     │\n│ 3   │ 3     │ 7     │\n\njulia> ols = lm(@formula(Y ~ X), data)\nStatsModels.DataFrameRegressionModel{LinearModel{LmResp{Array{Float64,1}},DensePredChol{Float64,LinearAlgebra.Cholesky{Float64,Array{Float64,2}}}},Array{Float64,2}}\n\nFormula: Y ~ 1 + X\n\nCoefficients:\n              Estimate Std.Error  t value Pr(>|t|)\n(Intercept)  -0.666667   0.62361 -1.06904   0.4788\nX                  2.5  0.288675  8.66025   0.0732\n\njulia> round.(stderror(ols), digits=5)\n2-element Array{Float64,1}:\n 0.62361\n 0.28868\n\njulia> round.(predict(ols), digits=5)\n3-element Array{Float64,1}:\n 1.83333\n 4.33333\n 6.83333"
 },
 
 {
