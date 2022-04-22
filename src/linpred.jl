@@ -51,20 +51,23 @@ mutable struct DensePredQR{T<:BlasReal} <: DensePred
     delbeta::Vector{T}            # coefficient increment
     scratchbeta::Vector{T}
     qr::QRCompactWY{T}
+    chol::Cholesky
     function DensePredQR{T}(X::Matrix{T}, beta0::Vector{T}) where T
         n, p = size(X)
         length(beta0) == p || throw(DimensionMismatch("length(β0) ≠ size(X,2)"))
-        new{T}(X, beta0, zeros(T,p), zeros(T,p), qr(X))
+        new{T}(X, beta0, zeros(T,p), zeros(T,p), qr(X), cholesky(Hermitian(X'*X,:U)))
     end
     function DensePredQR{T}(X::Matrix{T}) where T
         n, p = size(X)
-        new{T}(X, zeros(T, p), zeros(T,p), zeros(T,p), qr(X))
+        new{T}(X, zeros(T, p), zeros(T,p), zeros(T,p), qr(X), cholesky(Hermitian(X'*X,:U)))
     end
 end
 DensePredQR(X::Matrix, beta0::Vector) = DensePredQR{eltype(X)}(X, beta0)
 DensePredQR(X::Matrix{T}) where T = DensePredQR{T}(X, zeros(T, size(X,2)))
 convert(::Type{DensePredQR{T}}, X::Matrix{T}) where {T} = DensePredQR{T}(X, zeros(T, size(X, 2)))
 
+qrpred(X::SparseMatrixCSC, pivot::Bool=false) = SparsePredChol(X)
+qrpred(X::AbstractMatrix, pivot::Bool=false) = DensePredQR(Matrix(X))
 """
     delbeta!(p::LinPred, r::Vector)
 
@@ -74,6 +77,17 @@ function delbeta! end
 
 function delbeta!(p::DensePredQR{T}, r::Vector{T}) where T<:BlasReal
     p.delbeta = p.qr\r
+    return p
+end
+
+function delbeta!(p::DensePredQR{T}, r::Vector{T}, wt::Vector{T}) where T<:BlasReal
+    R = p.qr.R 
+    Q = p.qr.Q[:,1:(size(R)[1])]
+    W = Diagonal(wt)
+    sqrtW = Diagonal(map(√,wt)) 
+    p.delbeta = R \ ((Q'*W*Q) \ (Q'*W*r))
+    X = p.X
+    p.chol =  Cholesky{T,typeof(p.X)}(qr(sqrtW * Q ).R * R, 'U', 0) #compute cholesky using qr decomposition
     return p
 end
 
@@ -119,12 +133,12 @@ cholpred(X::AbstractMatrix, pivot::Bool=false) = DensePredChol(X, pivot)
 cholfactors(c::Union{Cholesky,CholeskyPivoted}) = c.factors
 cholesky!(p::DensePredChol{T}) where {T<:FP} = p.chol
 
-cholesky(p::DensePredQR{T}) where {T<:FP} = Cholesky{T,typeof(p.X)}(copy(p.qr.R), 'U', 0)
+cholesky(p::DensePredQR{T}) where {T<:FP} = Cholesky{T,typeof(p.X)}(copy(p.chol.U), 'U', 0)
 function cholesky(p::DensePredChol{T}) where T<:FP
     c = p.chol
     Cholesky(copy(cholfactors(c)), c.uplo, c.info)
 end
-cholesky!(p::DensePredQR{T}) where {T<:FP} = Cholesky{T,typeof(p.X)}(p.qr.R, 'U', 0)
+cholesky!(p::DensePredQR{T}) where {T<:FP} = Cholesky{T,typeof(p.X)}(p.chol.U, 'U', 0)
 
 function delbeta!(p::DensePredChol{T,<:Cholesky}, r::Vector{T}) where T<:BlasReal
     ldiv!(p.chol, mul!(p.delbeta, transpose(p.X), r))
