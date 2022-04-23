@@ -424,11 +424,15 @@ function StatsBase.fit!(m::AbstractGLM,
         m
     end
 end
-defaultPivot = true
+defaultPivot = false
 defaultDecomp = "chol"
 function setDefaultDecomp(str)
     global defaultDecomp = str
     defaultDecomp
+end
+function setDefaultPivot(x::Bool)
+    global defaultPivot = x
+    defaultPivot
 end
 const FIT_GLM_DOC = """
     In the first method, `formula` must be a
@@ -482,7 +486,7 @@ function fit(::Type{M},
     wts::AbstractVector{<:Real}      = similar(y, 0),
     offset::AbstractVector{<:Real}   = similar(y, 0),
     decomp=defaultDecomp,
-    pivot::Bool = false,
+    pivot::Bool = defaultPivot,
     fitargs...) where {M<:AbstractGLM}
 
     # Check that X and y have the same number of observations

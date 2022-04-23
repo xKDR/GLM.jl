@@ -45,31 +45,43 @@ A `LinPred` type with a dense, unpivoted QR decomposition of `X`
 - `scratchbeta`: scratch vector of length `p`, used in `linpred!` method
 - `qr`: a `QRCompactWY` object created from `X`, with optional row weights.
 """
-mutable struct DensePredQR{T<:BlasReal} <: DensePred
+mutable struct DensePredQR{T<:BlasReal,Q} <: DensePred
     X::Matrix{T}                  # model matrix
     beta0::Vector{T}              # base coefficient vector
     delbeta::Vector{T}            # coefficient increment
     scratchbeta::Vector{T}
-    qr::QRCompactWY{T}
+    qr::Q
     chol::Cholesky
-    function DensePredQR{T}(X::Matrix{T}, beta0::Vector{T}) where T
+    function DensePredQR{T}(X::Matrix{T}, beta0::Vector{T},pivot::Bool=false) where T
         n, p = size(X)
         length(beta0) == p || throw(DimensionMismatch("length(β0) ≠ size(X,2)"))
-        chol = Cholesky{T,typeof(X)}(qr(X).R, 'U', 0)
-        new{T}(X, beta0, zeros(T,p), zeros(T,p), qr(X), chol)
+        isposdef(X'X) || throw(PosDefException(1))
+        if pivot==true
+            new{T,QRPivoted}(X, beta0, zeros(T,p), zeros(T,p), qr(X,Val(true)), cholesky(Hermitian(X'*X,:U)))
+        else
+            chol = Cholesky{T,typeof(X)}(qr(X).R, 'U', 0)
+            new{T,QRCompactWY}(X, beta0, zeros(T,p), zeros(T,p), qr(X), chol)
+        end
     end
-    function DensePredQR{T}(X::Matrix{T}) where T
+    function DensePredQR{T}(X::Matrix{T},pivot::Bool=false) where T
+        
         n, p = size(X)
-        chol = Cholesky{T,typeof(X)}(qr(X).R, 'U', 0)
-        new{T}(X, zeros(T, p), zeros(T,p), zeros(T,p), qr(X), chol)
+        #=
+        if pivot==true
+            new{T,Q}(X, zeros(T, p), zeros(T,p), zeros(T,p), cholesky(Hermitian(X'*X,:U)),qr(X,Val(true)))
+        else
+            chol = Cholesky{T,typeof(X)}(qr(X).R, 'U', 0)
+            new{T,Q}(X, zeros(T, p), zeros(T,p), zeros(T,p), qr(X), chol)
+        end=#
+        DensePredQR{T}(X,zeros(T, p),pivot)
     end
 end
-DensePredQR(X::Matrix, beta0::Vector) = DensePredQR{eltype(X)}(X, beta0)
-DensePredQR(X::Matrix{T}) where T = DensePredQR{T}(X, zeros(T, size(X,2)))
+DensePredQR(X::Matrix, beta0::Vector,pivot::Bool=false) = DensePredQR{eltype(X)}(X, beta0,pivot)
+DensePredQR(X::Matrix{T},pivot::Bool=false) where T = DensePredQR{T}(X, zeros(T, size(X,2)),pivot)
 convert(::Type{DensePredQR{T}}, X::Matrix{T}) where {T} = DensePredQR{T}(X, zeros(T, size(X, 2)))
 
 qrpred(X::SparseMatrixCSC, pivot::Bool=false) = SparsePredChol(X)
-qrpred(X::AbstractMatrix, pivot::Bool=false) = DensePredQR(Matrix(X))
+qrpred(X::AbstractMatrix, pivot::Bool=false) = DensePredQR(Matrix(X),pivot)
 """
     delbeta!(p::LinPred, r::Vector)
 
@@ -77,12 +89,12 @@ Evaluate and return `p.delbeta` the increment to the coefficient vector from res
 """
 function delbeta! end
 
-function delbeta!(p::DensePredQR{T}, r::Vector{T}) where T<:BlasReal
+function delbeta!(p::DensePredQR{T,QRCompactWY}, r::Vector{T}) where T<:BlasReal
     p.delbeta = p.qr\r
     return p
 end
 
-function delbeta!(p::DensePredQR{T}, r::Vector{T}, wt::Vector{T}) where T<:BlasReal
+function delbeta!(p::DensePredQR{T,QRCompactWY}, r::Vector{T}, wt::Vector{T}) where T<:BlasReal
     R = p.qr.R 
     Q = p.qr.Q[:,1:(size(R)[1])]
     W = Diagonal(wt)
@@ -90,6 +102,19 @@ function delbeta!(p::DensePredQR{T}, r::Vector{T}, wt::Vector{T}) where T<:BlasR
     p.delbeta = R \ ((Q'*W*Q) \ (Q'*W*r))
     X = p.X
     p.chol =  Cholesky{T,typeof(p.X)}(qr(sqrtW * Q ).R * R, 'U', 0) #compute cholesky using qr decomposition
+    return p
+end
+
+function delbeta!(p::DensePredQR{T,QRPivoted}, r::Vector{T}, wt::Vector{T}) where T<:BlasReal
+    R = p.qr.R 
+    Q = p.qr.Q[:,1:(size(R)[1])]
+    W = Diagonal(wt)
+    sqrtW = Diagonal(map(√,wt)) 
+    p.delbeta = R \ ((Q'*W*Q) \ (Q'*W*r))
+    X = p.X
+    p.delbeta = p.qr.P*p.delbeta #for pivoting
+    #p.chol =  Cholesky{T,typeof(p.X)}(qr(sqrtW * Q ).R * R, 'U', 0) #compute cholesky using qr decomposition
+    p.chol = cholesky(Hermitian(X'*W*X,:U))
     return p
 end
 

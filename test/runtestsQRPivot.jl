@@ -4,6 +4,7 @@ using GLM
 using StatsFuns: logistic
 using Distributions: TDist
 GLM.setDefaultDecomp("qr")
+GLM.setDefaultPivot(true)
 test_show(x) = show(IOBuffer(), x)
 
 const glm_datadir = joinpath(dirname(@__FILE__), "..", "data")
