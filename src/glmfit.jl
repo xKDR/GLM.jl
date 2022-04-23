@@ -424,7 +424,12 @@ function StatsBase.fit!(m::AbstractGLM,
         m
     end
 end
-
+defaultPivot = true
+defaultDecomp = "chol"
+function setDefaultDecomp(str)
+    global defaultDecomp = str
+    defaultDecomp
+end
 const FIT_GLM_DOC = """
     In the first method, `formula` must be a
     [StatsModels.jl `Formula` object](https://juliastats.org/StatsModels.jl/stable/formula/)
@@ -476,6 +481,8 @@ function fit(::Type{M},
     dofit::Bool = true,
     wts::AbstractVector{<:Real}      = similar(y, 0),
     offset::AbstractVector{<:Real}   = similar(y, 0),
+    decomp=defaultDecomp,
+    pivot::Bool = false,
     fitargs...) where {M<:AbstractGLM}
 
     # Check that X and y have the same number of observations
@@ -484,7 +491,9 @@ function fit(::Type{M},
     end
 
     rr = GlmResp(y, d, l, offset, wts)
-    res = M(rr, cholpred(X), false)
+    #pivot only works for qrpred
+    #qrpred does not work for sparse matrix yet
+    res = M(rr, (decomp=="chol") ? cholpred(X) : qrpred(X,pivot), false)
     return dofit ? fit!(res; fitargs...) : res
 end
 

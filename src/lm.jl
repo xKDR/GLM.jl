@@ -161,13 +161,14 @@ $FIT_LM_DOC
 function fit(::Type{LinearModel}, X::AbstractMatrix{<:Real}, y::AbstractVector{<:Real},
              allowrankdeficient_dep::Union{Bool,Nothing}=nothing;
              wts::AbstractVector{<:Real}=similar(y, 0),
+             decomp=defaultDecomp,
              dropcollinear::Bool=true)
     if allowrankdeficient_dep !== nothing
         @warn "Positional argument `allowrankdeficient` is deprecated, use keyword " *
               "argument `dropcollinear` instead. Proceeding with positional argument value: $allowrankdeficient_dep"
         dropcollinear = allowrankdeficient_dep
     end
-    fit!(LinearModel(LmResp(y, wts), cholpred(X, dropcollinear)))
+    fit!(LinearModel(LmResp(y, wts), (decomp=="chol" || dropcollinear) ? cholpred(X, dropcollinear) : qrpred(X) ))
 end
 
 """

@@ -55,11 +55,13 @@ mutable struct DensePredQR{T<:BlasReal} <: DensePred
     function DensePredQR{T}(X::Matrix{T}, beta0::Vector{T}) where T
         n, p = size(X)
         length(beta0) == p || throw(DimensionMismatch("length(β0) ≠ size(X,2)"))
-        new{T}(X, beta0, zeros(T,p), zeros(T,p), qr(X), cholesky(Hermitian(X'*X,:U)))
+        chol = Cholesky{T,typeof(X)}(qr(X).R, 'U', 0)
+        new{T}(X, beta0, zeros(T,p), zeros(T,p), qr(X), chol)
     end
     function DensePredQR{T}(X::Matrix{T}) where T
         n, p = size(X)
-        new{T}(X, zeros(T, p), zeros(T,p), zeros(T,p), qr(X), cholesky(Hermitian(X'*X,:U)))
+        chol = Cholesky{T,typeof(X)}(qr(X).R, 'U', 0)
+        new{T}(X, zeros(T, p), zeros(T,p), zeros(T,p), qr(X), chol)
     end
 end
 DensePredQR(X::Matrix, beta0::Vector) = DensePredQR{eltype(X)}(X, beta0)
