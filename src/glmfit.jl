@@ -572,6 +572,7 @@ function fit(::Type{M},
     dofit::Bool = true,
     wts::AbstractVector{<:Real}      = similar(y, 0),
     offset::AbstractVector{<:Real}   = similar(y, 0),
+    method::String = "Slow",
     fitargs...) where {M<:AbstractGLM}
 
     # Check that X and y have the same number of observations
@@ -580,7 +581,12 @@ function fit(::Type{M},
     end
 
     rr = GlmResp(y, d, l, offset, wts)
-    res = M(rr, cholpred(X, dropcollinear), false)
+    if method==="Fast"
+        res = M(rr, cholpred(X, dropcollinear), false)
+    else
+        res = M(rr, qrpred(X, dropcollinear), false)
+    end
+
     return dofit ? fit!(res; fitargs...) : res
 end
 
