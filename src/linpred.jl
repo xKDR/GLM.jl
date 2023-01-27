@@ -35,7 +35,7 @@ end
 """
     DensePredQR
 
-A `LinPred` type with a dense, unpivoted QR decomposition of `X`
+A `LinPred` type with a dense QR decomposition of `X`
 
 # Members
 
@@ -43,40 +43,43 @@ A `LinPred` type with a dense, unpivoted QR decomposition of `X`
 - `beta0`: base coefficient vector of length `p`
 - `delbeta`: increment to coefficient vector, also of length `p`
 - `scratchbeta`: scratch vector of length `p`, used in `linpred!` method
-- `qr`: a `QRCompactWY` object created from `X`, with optional row weights.
+- `qr`: either a `QRCompactWY` or `QRPivoted` object created from `X`, with optional row weights.
+- `scratchm1`: scratch Matrix{T} of the same size as `X`
 """
-mutable struct DensePredQR{T<:BlasReal,Q<:Union{QRCompactWY{T},QRPivoted{T}}} <: DensePred
+mutable struct DensePredQR{T<:BlasReal,Q<:Union{QRCompactWY, QRPivoted}} <: DensePred
     X::Matrix{T}                  # model matrix
     beta0::Vector{T}              # base coefficient vector
     delbeta::Vector{T}            # coefficient increment
     scratchbeta::Vector{T}
     qr::Q
-    
-    function DensePredQR{T}(X::Matrix{T}, beta0::Vector{T}, pivot::Bool=false) where T
+    scratchm1::Matrix{T}
+
+    function DensePredQR(X::AbstractMatrix, beta0::AbstractVector, pivot::Bool=false)
         n, p = size(X)
         length(beta0) == p || throw(DimensionMismatch("length(β0) ≠ size(X,2)"))
-        if pivot
-            new{T,QRPivoted{T}}(X, zeros(T, p), zeros(T,p), zeros(T,p), qr(X,ColumnNorm()))
-        else
-            new{T,QRCompactWY{T}}(X, beta0, zeros(T,p), zeros(T,p), qr(X))
-        end
+        T = typeof(float(zero(eltype(X))))
+        Q = pivot ? QRPivoted : QRCompactWY
+        F = pivot ? pivoted_qr!(float(copy(X))) : qr(float(X))
+        new{T,Q}(Matrix{T}(X),
+            Vector{T}(beta0),
+            zeros(T, p),
+            zeros(T, p),
+            F,
+            similar(X, T))
     end
-
-    function DensePredQR{T}(X::Matrix{T}, pivot::Bool=false) where T
+    function DensePredQR(X::AbstractMatrix, pivot::Bool=false)
         n, p = size(X)
-        if pivot
-            new{T,QRPivoted{T}}(X, zeros(T, p), zeros(T,p), zeros(T,p), qr(X,ColumnNorm()))
-        else
-            new{T,QRCompactWY{T}}(X, zeros(T, p), zeros(T,p), zeros(T,p), qr(X))
-        end
+        T = typeof(float(zero(eltype(X))))
+        Q = pivot ? QRPivoted : QRCompactWY
+        F = pivot ? pivoted_qr!(float(copy(X))) : qr(float(X))
+        new{T,Q}(Matrix{T}(X),
+            zeros(T, p),
+            zeros(T, p),
+            zeros(T, p),
+            F,
+            similar(X, T))
     end
-
 end
-
-DensePredQR(X::Matrix, beta0::Vector, pivot::Bool=false) = DensePredQR{eltype(X)}(X, beta0, pivot)
-DensePredQR(X::Matrix{T}, pivot::Bool=false) where T = DensePredQR{T}(X, zeros(T, size(X,2)), pivot)
-convert(::Type{DensePredQR{T}}, X::Matrix{T}) where {T} = DensePredQR{T}(X, zeros(T, size(X, 2)))
-
 """
     delbeta!(p::LinPred, r::Vector)
 
@@ -84,37 +87,48 @@ Evaluate and return `p.delbeta` the increment to the coefficient vector from res
 """
 function delbeta! end
 
-function delbeta!(p::DensePredQR{T,QRCompactWY{T}}, r::Vector{T}) where T<:BlasReal
+function delbeta!(p::DensePredQR{T,<:QRCompactWY}, r::Vector{T}) where T<:BlasReal
     p.delbeta = p.qr\r
+    mul!(p.scratchm1, Diagonal(ones(size(r))), p.X)
     return p
 end
 
-function delbeta!(p::DensePredQR{T,QRCompactWY{T}}, r::Vector{T}, wt::Vector{T}) where T<:BlasReal
+function delbeta!(p::DensePredQR{T,<:QRCompactWY}, r::Vector{T}, wt::Vector{T}) where T<:BlasReal
     R = p.qr.R 
-    Q = p.qr.Q[:,1:(size(R)[1])]
+    Q = @view p.qr.Q[:, 1:size(R, 1)]
     W = Diagonal(wt)
     sqrtW = Diagonal(sqrt.(wt)) 
     p.delbeta = R \ ((Q'*W*Q) \ (Q'*W*r))
-    X = p.X
-    #p.qr = qr(sqrtW*X)
+    mul!(p.scratchm1, sqrtW, p.X)
     return p
 end
 
-function delbeta!(p::DensePredQR{T,QRPivoted{T}}, r::Vector{T}) where T<:BlasReal
-    return delbeta!(p,r,ones(size(r)))
+function delbeta!(p::DensePredQR{T,<:QRPivoted}, r::Vector{T}) where T<:BlasReal
+    rnk = rank(p.qr.R)
+    if rnk === length(p.delbeta)
+        p.delbeta = p.qr\r
+        mul!(p.scratchm1, Diagonal(ones(size(r))), p.X)
+        return p
+    end
+    R = @view p.qr.R[:, 1:rnk] 
+    Q = @view p.qr.Q[:, 1:size(R, 1)]
+    p.delbeta = zeros(size(p.delbeta))
+    p.delbeta[1:rnk] = R \ ((Q'*Q) \ (Q'*r))
+    p.delbeta = p.qr.P*p.delbeta
+    mul!(p.scratchm1, Diagonal(ones(size(r))), p.X)
+    return p
 end
 
-function delbeta!(p::DensePredQR{T,QRPivoted{T}}, r::Vector{T}, wt::Vector{T}) where T<:BlasReal
+function delbeta!(p::DensePredQR{T,<:QRPivoted}, r::Vector{T}, wt::Vector{T}) where T<:BlasReal
     rnk = rank(p.qr.R)
-    R = p.qr.R[:,1:rnk] 
-    Q = p.qr.Q[:,1:(size(R)[1])]
+    R = @view p.qr.R[:, 1:rnk] 
+    Q = @view p.qr.Q[:, 1:size(R, 1)]
     W = Diagonal(wt)
     sqrtW = Diagonal(sqrt.(wt))
-    X = p.X
     p.delbeta = zeros(size(p.delbeta))
     p.delbeta[1:rnk] = R \ ((Q'*W*Q) \ (Q'*W*r))
     p.delbeta = p.qr.P*p.delbeta #for pivoting 
-    #p.qr =  qr(sqrtW*X, ColumnNorm())
+    mul!(p.scratchm1, sqrtW, p.X)
     return p
 end
 
@@ -156,29 +170,16 @@ function DensePredChol(X::AbstractMatrix, pivot::Bool)
 end
 
 cholpred(X::AbstractMatrix, pivot::Bool=false) = DensePredChol(X, pivot)
-qrpred(X::AbstractMatrix, pivot::Bool=false) = DensePredQR(float(X),pivot)
+qrpred(X::AbstractMatrix, pivot::Bool=false) = DensePredQR(X, pivot)
 
 cholfactors(c::Union{Cholesky,CholeskyPivoted}) = c.factors
 cholesky!(p::DensePredChol{T}) where {T<:FP} = p.chol
 
 cholesky(p::DensePredQR{T}) where {T<:FP} = Cholesky{T,typeof(p.X)}(copy(p.qr.R), 'U', 0)
-cholesky(p::DensePredQR{T,QRPivoted{T}}) where {T<:FP} = CholeskyPivoted{T,typeof(p.X)}(copy(p.qr.R), 'U', p.qr.p, rank(p.qr.R), 0, 0)
-
-#cholesky of X'X using qr decomposition
-cholesky_qr(X::Matrix{T}) where T = Cholesky{T,typeof(X)}(qr(X).R, 'U', 0)
-
-#pivoted cholesky of X'X using pivoted qr decomposition
-function pivoted_cholesky_qr(X::Matrix{T}) where T
-    qrX=qr(X,ColumnNorm())
-    CholeskyPivoted{T,typeof(X)}(qrX.R, 'U', qrX.p, rank(qrX.R), 0, 0)
-end
-
 function cholesky(p::DensePredChol{T}) where T<:FP
     c = p.chol
     Cholesky(copy(cholfactors(c)), c.uplo, c.info)
 end
-cholesky!(p::DensePredQR{T}) where {T<:FP} = p.chol
-cholesky!(p::DensePredQR{T,QRPivoted{T}}) where {T<:FP} = p.chol
 
 function delbeta!(p::DensePredChol{T,<:Cholesky}, r::Vector{T}) where T<:BlasReal
     ldiv!(p.chol, mul!(p.delbeta, transpose(p.X), r))
@@ -282,29 +283,27 @@ LinearAlgebra.cholesky(p::SparsePredChol{T}) where {T} = copy(p.chol)
 LinearAlgebra.cholesky!(p::SparsePredChol{T}) where {T} = p.chol
 
 function invqr(x::DensePredQR{T,<: QRCompactWY}) where T
-    @info "invqr"
-    Q,R = x.qr
+    Q,R = qr(x.scratchm1)
     Rinv = inv(R)
     Rinv*Rinv'
 end
 
 function invqr(x::DensePredQR{T,<: QRPivoted}) where T
-    @info "invqr"
-    Q,R,pv = x.qr
+    Q,R,pv = pivoted_qr!(copy(x.scratchm1))
     rnk = rank(R)
     p = length(x.delbeta)
     if rnk == p
         Rinv = inv(R)
-        rinv = Rinv*Rinv'
+        xinv = Rinv*Rinv'
         ipiv = invperm(pv)
-        return rinv[ipiv, ipiv]
+        return xinv[ipiv, ipiv]
     else
         Rsub = R[1:rnk, 1:rnk]
         RsubInv = inv(Rsub)
-        rinv = fill(convert(T, NaN), (p,p))
-        rinv[1:rnk, 1:rnk] = RsubInv*RsubInv'
+        xinv = fill(convert(T, NaN), (p,p))
+        xinv[1:rnk, 1:rnk] = RsubInv*RsubInv'
         ipiv = invperm(pv)
-        return rinv[ipiv, ipiv]
+        return xinv[ipiv, ipiv]
     end
 end
 
@@ -342,17 +341,34 @@ end
 stderror(x::LinPredModel) = sqrt.(diag(vcov(x)))
 
 function show(io::IO, obj::LinPredModel)
-    println(io, "$(typeof(obj)):\n\nCoefficients:\n", coeftable(obj))
+    println(io, nameof(typeof(obj)), '\n')
+    obj.formula !== nothing && println(io, obj.formula, '\n')
+    println(io, "Coefficients:\n", coeftable(obj))
 end
 
-modelframe(obj::LinPredModel) = obj.fr
+function modelframe(f::FormulaTerm, data, contrasts::AbstractDict, ::Type{M}) where M
+    Tables.istable(data) ||
+        throw(ArgumentError("expected data in a Table, got $(typeof(data))"))
+    t = Tables.columntable(data)
+    msg = StatsModels.checknamesexist(f, t)
+    msg != "" && throw(ArgumentError(msg))
+    data, _ = StatsModels.missing_omit(t, f)
+    sch = schema(f, data, contrasts)
+    f = apply_schema(f, sch, M)
+    f, modelcols(f, data)
+end
+
 modelmatrix(obj::LinPredModel) = obj.pp.X
 response(obj::LinPredModel) = obj.rr.y
 
 fitted(m::LinPredModel) = m.rr.mu
 predict(mm::LinPredModel) = fitted(mm)
-StatsModels.formula(obj::LinPredModel) = modelframe(obj).formula
 residuals(obj::LinPredModel) = residuals(obj.rr)
+
+function formula(obj::LinPredModel)
+    obj.formula === nothing && throw(ArgumentError("model was fitted without a formula"))
+    return obj.formula
+end
 
 """
     nobs(obj::LinearModel)
@@ -371,11 +387,53 @@ end
 
 coef(x::LinPred) = x.beta0
 coef(obj::LinPredModel) = coef(obj.pp)
+coefnames(x::LinPredModel) =
+    x.formula === nothing ? ["x$i" for i in 1:length(coef(x))] : coefnames(formula(x).rhs)
 
 dof_residual(obj::LinPredModel) = nobs(obj) - dof(obj) + 1
 
 hasintercept(m::LinPredModel) = any(i -> all(==(1), view(m.pp.X , :, i)), 1:size(m.pp.X, 2))
 
 linpred_rank(x::LinPred) = length(x.beta0)
-linpred_rank(x::DensePredChol{<:Any, <:CholeskyPivoted}) = x.chol.rank
-linpred_rank(x::DensePredQR{<:Any,<:QRPivoted}) = cholesky(x).rank
+linpred_rank(x::DensePredChol{<:Any, <:CholeskyPivoted}) = rank(x.chol)
+linpred_rank(x::DensePredQR{<:Any,<:QRPivoted}) = rank(x.qr.R)
+
+ispivoted(x::LinPred) = false
+ispivoted(x::DensePredChol{<:Any, <:CholeskyPivoted}) = true
+ispivoted(x::DensePredQR{<:Any,<:QRPivoted}) = true
+
+decomposition_method(x::LinPred) = isa(x, DensePredQR) ? :qr : :cholesky
+
+_coltype(::ContinuousTerm{T}) where {T} = T
+
+# Function common to all LinPred models, but documented separately
+# for LinearModel and GeneralizedLinearModel
+function StatsBase.predict(mm::LinPredModel, data;
+                           interval::Union{Symbol,Nothing}=nothing,
+                           kwargs...)
+    Tables.istable(data) ||
+        throw(ArgumentError("expected data in a Table, got $(typeof(data))"))
+
+    f = formula(mm)
+    t = Tables.columntable(data)
+    cols, nonmissings = StatsModels.missing_omit(t, f.rhs)
+    newx = modelcols(f.rhs, cols)
+    prediction = Tables.allocatecolumn(Union{_coltype(f.lhs), Missing}, length(nonmissings))
+    fill!(prediction, missing)
+    if interval === nothing
+        predict!(view(prediction, nonmissings), mm, newx;
+                 interval=interval, kwargs...)
+        return prediction
+    else
+        # Finding integer indices once is faster
+        nonmissinginds = findall(nonmissings)
+        lower = Vector{Union{Float64, Missing}}(missing, length(nonmissings))
+        upper = Vector{Union{Float64, Missing}}(missing, length(nonmissings))
+        tup = (prediction=view(prediction, nonmissinginds),
+               lower=view(lower, nonmissinginds),
+               upper=view(upper, nonmissinginds))
+        predict!(tup, mm, newx;
+                 interval=interval, kwargs...)
+        return (prediction=prediction, lower=lower, upper=upper)
+    end
+end

@@ -229,6 +229,7 @@ abstract type AbstractGLM <: LinPredModel end
 mutable struct GeneralizedLinearModel{G<:GlmResp,L<:LinPred} <: AbstractGLM
     rr::G
     pp::L
+    formula::Union{FormulaTerm,Nothing}
     fit::Bool
     maxiter::Int
     minstepfac::Float64
@@ -236,8 +237,9 @@ mutable struct GeneralizedLinearModel{G<:GlmResp,L<:LinPred} <: AbstractGLM
     rtol::Float64
 end
 
-GeneralizedLinearModel(rr::GlmResp, pp::LinPred, fit::Bool) =
-    GeneralizedLinearModel(rr, pp, fit, 0, NaN, NaN, NaN)
+GeneralizedLinearModel(rr::GlmResp, pp::LinPred,
+                       f::Union{FormulaTerm, Nothing}, fit::Bool) =
+    GeneralizedLinearModel(rr, pp, f, fit, 0, NaN, NaN, NaN)
 
 function coeftable(mm::AbstractGLM; level::Real=0.95)
     cc = coef(mm)
@@ -246,9 +248,10 @@ function coeftable(mm::AbstractGLM; level::Real=0.95)
     p = 2 * ccdf.(Ref(Normal()), abs.(zz))
     ci = se*quantile(Normal(), (1-level)/2)
     levstr = isinteger(level*100) ? string(Integer(level*100)) : string(level*100)
+    cn = coefnames(mm)
     CoefTable(hcat(cc,se,zz,p,cc+ci,cc-ci),
               ["Coef.","Std. Error","z","Pr(>|z|)","Lower $levstr%","Upper $levstr%"],
-              ["x$i" for i = 1:size(mm.pp.X, 2)], 4, 3)
+              cn, 4, 3)
 end
 
 function confint(obj::AbstractGLM; level::Real=0.95)
@@ -283,7 +286,8 @@ function nulldeviance(m::GeneralizedLinearModel)
         X = fill(1.0, length(y), hasint ? 1 : 0)
         nullm = fit(GeneralizedLinearModel,
                     X, y, d, r.link; wts=wts, offset=offset,
-                    dropcollinear=isa(m.pp.chol, CholeskyPivoted),
+                    dropcollinear=ispivoted(m.pp),
+                    method=decomposition_method(m.pp),
                     maxiter=m.maxiter, minstepfac=m.minstepfac,
                     atol=m.atol, rtol=m.rtol)
         dev = deviance(nullm)
@@ -338,7 +342,8 @@ function nullloglikelihood(m::GeneralizedLinearModel)
         X = fill(1.0, length(y), hasint ? 1 : 0)
         nullm = fit(GeneralizedLinearModel,
                     X, y, d, r.link; wts=wts, offset=offset,
-                    dropcollinear=isa(m.pp.chol, CholeskyPivoted),
+                    dropcollinear=ispivoted(m.pp),
+                    method=decomposition_method(m.pp),
                     maxiter=m.maxiter, minstepfac=m.minstepfac,
                     atol=m.atol, rtol=m.rtol)
         ll = loglikelihood(nullm)
@@ -466,7 +471,6 @@ function StatsBase.fit!(m::AbstractGLM,
                         y;
                         wts=nothing,
                         offset=nothing,
-                        dofit::Bool=true,
                         verbose::Bool=false,
                         maxiter::Integer=30,
                         minstepfac::Real=0.001,
@@ -526,20 +530,8 @@ const FIT_GLM_DOC = """
     for a list of built-in links).
 
     # Keyword Arguments
-    - `dropcollinear::Bool=true`: Controls whether or not `lm` accepts a model matrix which
-      is less-than-full rank.
-      If `true` (the default) the coefficient for redundant linearly dependent columns is
-      `0.0` and all associated statistics are set to `NaN`.
-      Typically from a set of linearly-dependent columns the last ones are identified as redundant
-      (however, the exact selection of columns identified as redundant is not guaranteed).
-    - `dofit::Bool=true`: Determines whether model will be fit
-    - `wts::Vector=similar(y,0)`: Prior frequency (a.k.a. case) weights of observations.
-      Such weights are equivalent to repeating each observation a number of times equal
-      to its weight. Do note that this interpretation gives equal point estimates but
-      different standard errors from analytical (a.k.a. inverse variance) weights and
-      from probability (a.k.a. sampling) weights which are the default in some other
-      software.
-      Can be length 0 to indicate no weighting (default).
+    - `dofit::Bool=true`: Determines whether model will be fit. Only supported with `glm`.
+    $COMMON_FIT_KWARGS_DOCS
     - `offset::Vector=similar(y,0)`: offset added to `Xβ` to form `eta`.  Can be of
       length 0
     - `verbose::Bool=false`: Display convergence information for each iteration
@@ -569,11 +561,16 @@ function fit(::Type{M},
     d::UnivariateDistribution,
     l::Link = canonicallink(d);
     dropcollinear::Bool = true,
-    dofit::Bool = true,
+    method::Symbol = :cholesky,
+    dofit::Union{Bool, Nothing} = nothing,
     wts::AbstractVector{<:Real}      = similar(y, 0),
     offset::AbstractVector{<:Real}   = similar(y, 0),
-    method::String = "Slow",
     fitargs...) where {M<:AbstractGLM}
+    if dofit === nothing
+        dofit = true
+    else
+        Base.depwarn("`dofit` argument to `fit` is deprecated", :fit)
+    end
 
     # Check that X and y have the same number of observations
     if size(X, 1) != size(y, 1)
@@ -581,10 +578,13 @@ function fit(::Type{M},
     end
 
     rr = GlmResp(y, d, l, offset, wts)
-    if method==="Fast"
-        res = M(rr, cholpred(X, dropcollinear), false)
+
+    if method === :cholesky
+        res = M(rr, cholpred(X, dropcollinear), nothing, false)
+    elseif method === :qr
+        res = M(rr, qrpred(X, dropcollinear), nothing, false)
     else
-        res = M(rr, qrpred(X, dropcollinear), false)
+        throw(ArgumentError("The only supported values for keyword argument `method` are `:cholesky` and `:qr`."))
     end
 
     return dofit ? fit!(res; fitargs...) : res
@@ -597,11 +597,51 @@ fit(::Type{M},
     l::Link=canonicallink(d); kwargs...) where {M<:AbstractGLM} =
         fit(M, float(X), float(y), d, l; kwargs...)
 
+function fit(::Type{M},
+             f::FormulaTerm,
+             data,
+             d::UnivariateDistribution,
+             l::Link=canonicallink(d);
+             offset::Union{AbstractVector, Nothing} = nothing,
+             wts::Union{AbstractVector, Nothing} = nothing,
+             dropcollinear::Bool = true,
+             method::Symbol = :cholesky,
+             dofit::Union{Bool, Nothing} = nothing,
+             contrasts::AbstractDict{Symbol}=Dict{Symbol,Any}(),
+             fitargs...) where {M<:AbstractGLM}
+    if dofit === nothing
+        dofit = true
+    else
+        Base.depwarn("`dofit` argument to `fit` is deprecated", :fit)
+    end
+
+    f, (y, X) = modelframe(f, data, contrasts, M)
+
+    # Check that X and y have the same number of observations
+    if size(X, 1) != size(y, 1)
+        throw(DimensionMismatch("number of rows in X and y must match"))
+    end
+
+    off = offset === nothing ? similar(y, 0) : offset
+    wts = wts === nothing ? similar(y, 0) : wts
+    rr = GlmResp(y, d, l, off, wts)
+    
+    if method === :cholesky
+        res = M(rr, cholpred(X, dropcollinear), f, false)
+    elseif method === :qr
+        res = M(rr, qrpred(X, dropcollinear), f, false)
+    else
+        throw(ArgumentError("The only supported values for keyword argument `method` are `:cholesky` and `:qr`."))
+    end
+
+    return dofit ? fit!(res; fitargs...) : res
+end
+
 """
     glm(formula, data,
-        distr::UnivariateDistribution, link::Link = canonicallink(d); <keyword arguments>)
+        distr::UnivariateDistribution, link::Link = canonicallink(distr); <keyword arguments>)
     glm(X::AbstractMatrix, y::AbstractVector,
-        distr::UnivariateDistribution, link::Link = canonicallink(d); <keyword arguments>)
+        distr::UnivariateDistribution, link::Link = canonicallink(distr); <keyword arguments>)
 
 Fit a generalized linear model to data. Alias for `fit(GeneralizedLinearModel, ...)`.
 
@@ -637,13 +677,12 @@ function dispersion(m::AbstractGLM, sqr::Bool=false)
     end
 end
 
+const PREDICT_COMMON =
 """
-    predict(mm::AbstractGLM, newX::AbstractMatrix; offset::FPVector=eltype(newX)[],
-            interval::Union{Symbol,Nothing}=nothing, level::Real = 0.95,
-            interval_method::Symbol = :transformation)
-
-Return the predicted response of model `mm` from covariate values `newX` and,
-optionally, an `offset`.
+`newX` must be either a table (in the [Tables.jl]((https://tables.juliadata.org/stable/)
+definition) containing all columns used in the model formula, or a matrix with one column
+for each predictor in the model. In both cases, each row represents an observation for
+which a prediction will be returned.
 
 If `interval=:confidence`, also return upper and lower bounds for a given coverage `level`.
 By default (`interval_method = :transformation`) the intervals are constructed by applying
@@ -653,11 +692,54 @@ response around the linear predictor. The `:delta` method intervals are symmetri
 the point estimates, but do not respect natural parameter constraints
 (e.g., the lower bound for a probability could be negative).
 """
+
+"""
+    predict(mm::AbstractGLM, newX;
+            offset::FPVector=[],
+            interval::Union{Symbol,Nothing}=nothing, level::Real=0.95,
+            interval_method::Symbol=:transformation)
+
+Return the predicted response of model `mm` from covariate values `newX` and,
+optionally, an `offset`.
+
+$PREDICT_COMMON
+"""
 function predict(mm::AbstractGLM, newX::AbstractMatrix;
                  offset::FPVector=eltype(newX)[],
                  interval::Union{Symbol,Nothing}=nothing,
                  level::Real=0.95,
                  interval_method=:transformation)
+    r = response(mm)
+    len = size(newX, 1)
+    res = interval === nothing ?
+        similar(r, len) :
+        (prediction=similar(r, len), lower=similar(r, len), upper=similar(r, len))
+    predict!(res, mm, newX,
+             offset=offset, interval=interval, level=level,
+             interval_method=interval_method)
+end
+
+"""
+    predict!(res, mm::AbstractGLM, newX::AbstractMatrix;
+             offset::FPVector=eltype(newX)[],
+             interval::Union{Symbol,Nothing}=nothing, level::Real=0.95,
+             interval_method::Symbol=:transformation)
+
+Store in `res` the predicted response of model `mm` from covariate values `newX`
+and, optionally, an `offset`. `res` must be a vector with a length equal to the number
+of rows in `newX` if `interval=nothing` (the default), and otherwise a `NamedTuple`
+of vectors with names `prediction`, `lower` and `upper`.
+
+$PREDICT_COMMON
+"""
+function predict!(res::Union{AbstractVector,
+                             NamedTuple{(:prediction, :lower, :upper),
+                                        <: NTuple{3, AbstractVector}}},
+                  mm::AbstractGLM, newX::AbstractMatrix;
+                  offset::FPVector=eltype(newX)[],
+                  interval::Union{Symbol,Nothing}=nothing,
+                  level::Real=0.95,
+                  interval_method=:transformation)
     eta = newX * coef(mm)
     if !isempty(mm.rr.offset)
         length(offset) == size(newX, 1) ||
@@ -666,11 +748,20 @@ function predict(mm::AbstractGLM, newX::AbstractMatrix;
     else
         length(offset) > 0 && throw(ArgumentError("fit without offset, so value of `offset` kw arg does not make sense"))
     end
-    mu = linkinv.(Link(mm), eta)
 
     if interval === nothing
-        return mu
+        res isa AbstractVector ||
+            throw(ArgumentError("`res` must be a vector when `interval == nothing` or is omitted"))
+        length(res) == size(newX, 1) ||
+            throw(DimensionMismatch("length of `res` must equal the number of rows in `newX`"))
+        res .= linkinv.(Link(mm), eta)
     elseif interval == :confidence
+        res isa NamedTuple ||
+            throw(ArgumentError("`res` must be a `NamedTuple` when `interval == :confidence`"))
+        mu, lower, upper = res
+        length(mu) == length(lower) == length(upper) == size(newX, 1) ||
+            throw(DimensionMismatch("length of vectors in `res` must equal the number of rows in `newX`"))
+        mu .= linkinv.(Link(mm), eta)
         normalquantile = quantile(Normal(), (1 + level)/2)
         # Compute confidence intervals in two steps
         # (2nd step varies depending on `interval_method`)
@@ -683,19 +774,19 @@ function predict(mm::AbstractGLM, newX::AbstractMatrix;
             # 2. Now compute the variance for mu based on variance of eta and
             # construct intervals based on that (Delta method)
             stdmu = stdeta .* abs.(mueta.(Link(mm), eta))
-            lower = mu .- normalquantile .* stdmu
-            upper = mu .+ normalquantile .* stdmu
+            lower .= mu .- normalquantile .* stdmu
+            upper .= mu .+ normalquantile .* stdmu
         elseif interval_method == :transformation
             # 2. Construct intervals for eta, then apply inverse link
-            lower = linkinv.(Link(mm), eta .- normalquantile .* stdeta)
-            upper = linkinv.(Link(mm), eta .+ normalquantile .* stdeta)
+            lower .= linkinv.(Link(mm), eta .- normalquantile .* stdeta)
+            upper .= linkinv.(Link(mm), eta .+ normalquantile .* stdeta)
         else
             throw(ArgumentError("interval_method can be only :transformation or :delta"))
         end
     else
         throw(ArgumentError("only :confidence intervals are defined"))
     end
-    (prediction = mu, lower = lower, upper = upper)
+    return res
 end
 
 # A helper function to choose default values for eta
