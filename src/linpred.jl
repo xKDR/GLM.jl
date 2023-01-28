@@ -142,7 +142,7 @@ function delbeta!(p::DensePredQR{T,<:QRPivoted}, r::Vector{T}) where T<:BlasReal
     return p
 end
 
-function delbeta!(p::DensePredQR{T,<:QRPivoted}, r::Vector{T}, wt::Vector{T}) where T<:BlasReal
+function __delbeta!(p::DensePredQR{T,<:QRPivoted}, r::Vector{T}, wt::Vector{T}) where T<:BlasReal
     rnk = rank(p.qr.R)
     R = @view p.qr.R[:, 1:rnk] 
     Q = @view p.qr.Q[:, 1:size(R, 1)]
@@ -151,28 +151,43 @@ function delbeta!(p::DensePredQR{T,<:QRPivoted}, r::Vector{T}, wt::Vector{T}) wh
     p.delbeta = zeros(size(p.delbeta))
     p.delbeta[1:rnk] = R \ ((Q'*W*Q) \ (Q'*W*r))
     p.delbeta = p.qr.P*p.delbeta #for pivoting 
+
+    println(p.qr)
+    println(r)
+    println(wt)
+    println(p.delbeta)
+
     mul!(p.scratchm1, sqrtW, p.X)
     return p
 end
 
-function ___delbeta!(p::DensePredQR{T,<:QRPivoted}, r::Vector{T}, wt::Vector{T}) where T<:BlasReal
+function delbeta!(p::DensePredQR{T,<:QRPivoted}, r::Vector{T}, wt::Vector{T}) where T<:BlasReal
     rnk = rank(p.qr.R)
     X = p.X
     W = Diagonal(wt)
     sqrtW = Diagonal(sqrt.(wt))
+    delbeta = p.delbeta
 
     mul!(p.scratchm1, sqrtW, X)
-    mul!(p.delbeta, X'W, r)
-    qnr = pivoted_qr!(p.scratchm1)
-    R = @view qnr.R[:, 1:rnk]
-    Q = @view qnr.Q[:, 1:size(R, 1)]
-    Rinv = inv(qnr.R)
-    
-    p.delbeta = zeros(size(p.delbeta))
-    #p.delbeta[1:rnk] = Rinv * Rinv' * (X'W * r)
-    p.delbeta[1:rnk] = R \ Q'r
-    p.delbeta = p.qr.P*p.delbeta #for pivoting 
-    mul!(p.scratchm1, sqrtW, p.X)
+    mul!(delbeta, X'W, r)
+
+    if rnk === length(delbeta)
+        qnr = qr(p.scratchm1)
+        Rinv = inv(qnr.R)
+        p.delbeta = Rinv * Rinv' * p.delbeta
+    else
+        qnr = pivoted_qr!(copy(p.scratchm1))
+        R = @view qnr.R[1:rnk, 1:rnk]
+        Rinv = inv(R)
+        piv = qnr.p
+        permute!(delbeta, piv)
+        for k=(rnk+1):length(delbeta)
+            delbeta[k] = -zero(T)
+        end
+        p.delbeta[1:rnk] = Rinv * Rinv' * view(delbeta, 1:rnk)
+        p.delbeta[rnk+1:length(p.delbeta)] .= 0
+        invpermute!(delbeta, piv)
+    end
     return p
 end
 
@@ -266,7 +281,7 @@ function delbeta!(p::DensePredChol{T,<:CholeskyPivoted}, r::Vector{T}, wt::Vecto
     mul!(delbeta, transpose(p.scratchm1), r)
     # calculate delbeta = (X'WX)\X'Wr
     rnk = rank(p.chol)
-    if rnk == length(delbeta)
+    if rnk === length(delbeta)
         cf = cholfactors(p.chol)
         cf .= p.scratchm2[piv, piv]
         cholesky!(Hermitian(cf, Symbol(p.chol.uplo)))

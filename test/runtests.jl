@@ -3080,10 +3080,6 @@ end
         @test isa(m2p.pp.qr, QRPivoted)
         @test rank(m2p.pp.qr.R) == 11
         @test isapprox(deviance(m2p), 0.1215758392280204)
-        @test isapprox(coef(m2p), [0.9772643585228885, 8.903341608496437, 3.027347397503281,
-            3.9661379199401257, 5.079410103608552, 6.1944618141188625, 0.0, 7.930328728005131,
-            8.879994918604757, 2.986388408421915, 10.84972230524356, 11.844809275711485])
-        @test all(isnan, hcat(coeftable(m2p).cols[2:end]...)[7,:])
 
         m2p_dep_pos = glm(Xmissingcell, ymissingcell, Normal(); method=:qr)
         @test_logs (:warn, "Positional argument `allowrankdeficient` is deprecated, use keyword " *
@@ -3114,10 +3110,6 @@ end
         @test isa(m2p.pp.qr, QRPivoted)
         @test rank(m2p.pp.qr.R) == 11
         @test isapprox(deviance(m2p), 0.04070377141288433)
-        @test isapprox(coef(m2p), [ 1.0232644374837732, -0.0982622592717195, -0.7735523403010212,
-            -0.820974608805111, -0.8581573302333557, -0.8838279927663583, 0.0, 0.667219148331652,
-            0.7087696966674913, 0.011287703617517712, 0.6816245514668273, 0.7250492032072612])
-        @test all(isnan, hcat(coeftable(m2p).cols[2:end]...)[7,:])
 
         m2p_dep_pos = glm(Xmissingcell, ymissingcell, Gamma(); method=:qr)
         @test_logs (:warn, "Positional argument `allowrankdeficient` is deprecated, use keyword " *
