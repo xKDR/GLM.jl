@@ -3074,7 +3074,7 @@ end
         @test isapprox(deviance(m1), 0.12160301538297297)
         Xmissingcell = X[inds, :]
         ymissingcell = y[inds]
-        @test_throws PosDefException m2 = glm(Xmissingcell, ymissingcell, Normal();
+        @test_throws ErrorException m2 = glm(Xmissingcell, ymissingcell, Normal();
             dropcollinear=false, method=:qr)
         m2p = glm(Xmissingcell, ymissingcell, Normal(); dropcollinear=true, method=:qr)
         @test isa(m2p.pp.qr, QRPivoted)
@@ -3089,7 +3089,7 @@ end
         @test_logs (:warn, "Positional argument `allowrankdeficient` is deprecated, use keyword " *
                     "argument `dropcollinear` instead. Proceeding with positional argument value: true") fit(LinearModel, Xmissingcell, ymissingcell, true)
         @test isa(m2p_dep_pos.pp.qr, QRPivoted)
-        @test rank(m2p_dep_pos.pp.qr.R) == rank(m2p.pp.Q.R)
+        @test rank(m2p_dep_pos.pp.qr.R) == rank(m2p.pp.qr.R)
         @test isapprox(deviance(m2p_dep_pos), deviance(m2p))
         @test isapprox(coef(m2p_dep_pos), coef(m2p))
     end
@@ -3108,7 +3108,7 @@ end
         @test isapprox(deviance(m1), 0.0407069934950098)
         Xmissingcell = X[inds, :]
         ymissingcell = y[inds]
-        @test_throws PosDefException glm(Xmissingcell, ymissingcell, Gamma();
+        @test_throws ErrorException glm(Xmissingcell, ymissingcell, Gamma();
                                          dropcollinear=false, method=:qr)
         m2p = glm(Xmissingcell, ymissingcell, Gamma(); dropcollinear=true, method=:qr)
         @test isa(m2p.pp.qr, QRPivoted)
@@ -3119,7 +3119,7 @@ end
             0.7087696966674913, 0.011287703617517712, 0.6816245514668273, 0.7250492032072612])
         @test all(isnan, hcat(coeftable(m2p).cols[2:end]...)[7,:])
 
-        m2p_dep_pos = fit(GeneralizedLinearModel, Xmissingcell, ymissingcell, Gamma())
+        m2p_dep_pos = glm(Xmissingcell, ymissingcell, Gamma(); method=:qr)
         @test_logs (:warn, "Positional argument `allowrankdeficient` is deprecated, use keyword " *
                     "argument `dropcollinear` instead. Proceeding with positional argument value: true") fit(LinearModel, Xmissingcell, ymissingcell, true)
         @test isa(m2p_dep_pos.pp.qr, QRPivoted)

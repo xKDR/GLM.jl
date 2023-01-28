@@ -88,18 +88,40 @@ Evaluate and return `p.delbeta` the increment to the coefficient vector from res
 function delbeta! end
 
 function delbeta!(p::DensePredQR{T,<:QRCompactWY}, r::Vector{T}) where T<:BlasReal
+    rnk = rank(p.qr.R)
+    rnk === length(p.delbeta) || 
+        throw(error("One or more columns in the design matrix are linearly dependent on others"))
     p.delbeta = p.qr\r
     mul!(p.scratchm1, Diagonal(ones(size(r))), p.X)
     return p
 end
 
-function delbeta!(p::DensePredQR{T,<:QRCompactWY}, r::Vector{T}, wt::Vector{T}) where T<:BlasReal
+function _delbeta!(p::DensePredQR{T,<:QRCompactWY}, r::Vector{T}, wt::Vector{T}) where T<:BlasReal
     R = p.qr.R 
     Q = @view p.qr.Q[:, 1:size(R, 1)]
     W = Diagonal(wt)
     sqrtW = Diagonal(sqrt.(wt)) 
     p.delbeta = R \ ((Q'*W*Q) \ (Q'*W*r))
+    println(p.qr)
+    println(r)
+    println(wt)
+    println(p.delbeta)
     mul!(p.scratchm1, sqrtW, p.X)
+    return p
+end
+
+function delbeta!(p::DensePredQR{T,<:QRCompactWY}, r::Vector{T}, wt::Vector{T}) where T<:BlasReal
+    rnk = rank(p.qr.R)
+    rnk === length(p.delbeta) || 
+        throw(error("One or more columns in the design matrix are linearly dependent on others"))
+    X = p.X
+    W = Diagonal(wt)
+    sqrtW = Diagonal(sqrt.(wt)) 
+    mul!(p.scratchm1, sqrtW, X)
+    mul!(p.delbeta, X'W, r)
+    qnr = qr(p.scratchm1)
+    Rinv = inv(qnr.R)
+    p.delbeta = Rinv * Rinv' * p.delbeta
     return p
 end
 
@@ -113,7 +135,8 @@ function delbeta!(p::DensePredQR{T,<:QRPivoted}, r::Vector{T}) where T<:BlasReal
     R = @view p.qr.R[:, 1:rnk] 
     Q = @view p.qr.Q[:, 1:size(R, 1)]
     p.delbeta = zeros(size(p.delbeta))
-    p.delbeta[1:rnk] = R \ ((Q'*Q) \ (Q'*r))
+    #p.delbeta[1:rnk] = R \ ((Q'*Q) \ (Q'*r))
+    p.delbeta[1:rnk] = R \ Q'r
     p.delbeta = p.qr.P*p.delbeta
     mul!(p.scratchm1, Diagonal(ones(size(r))), p.X)
     return p
@@ -127,6 +150,27 @@ function delbeta!(p::DensePredQR{T,<:QRPivoted}, r::Vector{T}, wt::Vector{T}) wh
     sqrtW = Diagonal(sqrt.(wt))
     p.delbeta = zeros(size(p.delbeta))
     p.delbeta[1:rnk] = R \ ((Q'*W*Q) \ (Q'*W*r))
+    p.delbeta = p.qr.P*p.delbeta #for pivoting 
+    mul!(p.scratchm1, sqrtW, p.X)
+    return p
+end
+
+function ___delbeta!(p::DensePredQR{T,<:QRPivoted}, r::Vector{T}, wt::Vector{T}) where T<:BlasReal
+    rnk = rank(p.qr.R)
+    X = p.X
+    W = Diagonal(wt)
+    sqrtW = Diagonal(sqrt.(wt))
+
+    mul!(p.scratchm1, sqrtW, X)
+    mul!(p.delbeta, X'W, r)
+    qnr = pivoted_qr!(p.scratchm1)
+    R = @view qnr.R[:, 1:rnk]
+    Q = @view qnr.Q[:, 1:size(R, 1)]
+    Rinv = inv(qnr.R)
+    
+    p.delbeta = zeros(size(p.delbeta))
+    #p.delbeta[1:rnk] = Rinv * Rinv' * (X'W * r)
+    p.delbeta[1:rnk] = R \ Q'r
     p.delbeta = p.qr.P*p.delbeta #for pivoting 
     mul!(p.scratchm1, sqrtW, p.X)
     return p
